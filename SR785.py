@@ -94,7 +94,9 @@ def getparam(gpibObj, fileRoot, dataFile, paramFile):
 
 def download_data(gpib, display):
     """
-    Faster method for grabbing data.
+    Depending on the measurement group this function will extract the data from 
+    the SR785 with the xaxis and units actually being used. This method is faster
+    than downloadDisplay.
     
     Parameters
     ----------
@@ -120,7 +122,7 @@ def download_data(gpib, display):
         raise Exception("Invalid display input")
         
     #Get the number of points on the Display
-    ret = gpib.query('DSPN?'+str(display)).strip()
+    ret = gpib.query(f'DSPN?{display}').strip()
     if gpib.debug: print("download_display: ", ret)
         
     numPoint = int(ret.decode('UTF8'))
@@ -130,19 +132,30 @@ def download_data(gpib, display):
     
     if gpib.debug: print('Expecting %i bytes' % numPoint)
     
-    data = gpib.query("DSPB?%i" % display, numPoint*4).strip()
+    data = gpib.query(f"DSPB?{display}", numPoint*4).strip()
+    MGRP = int(gpib.query(f'MGRP?{display}').decode().strip())
     
-    start = float(gpib.query('FSTR?0').strip().decode())
-    end   = float(gpib.query('FEND?0').strip().decode())
-    num   = int(gpib.query('FLIN?0').strip().decode())
-    Ns    = [100,200,400,800]
-    N     = Ns[num]
-    f     = np.linspace(start, end, N+1)
+    if MGRP == 3: # sine group
+        start = float(gpib.query('SSTR?0').decode().strip())
+        end  = float(gpib.query('SSTP?0').decode().strip())
+        
+        if int(gpib.query(f'SSTY?{display}').decode().strip()) == 1: #log
+            f = np.logspace(np.log10(start), np.log10(end), numPoint-1)
+        else:
+            f = np.linspace(start, end, numPoint-1)
+    elif MGRP == 0: # FFT
+        start = float(gpib.query(f'DBIN?{display},0').strip().decode())
+        end   = float(gpib.query(f'DBIN?{display},{numPoint-1}').strip().decode())
+    
+        f = np.linspace(start, end, numPoint)
+    else:
+        raise NotImplemented()
+            
     # square root character is outputted strange from SR785
-    unit = gpib.query("UNIT? %i" % 1).strip().replace(b'\xfb', u"\u221A".encode()).decode()
-    
+    # squared is some weird special character too
+    unit = gpib.query(f"UNIT?{display}").strip().replace(b'\xfd', b'^2').replace(b'\xfb', u"\u221A".encode()).decode()
     assert(len(data)//4 == numPoint)
-    return f, np.frombuffer(data, count=N+1, dtype=np.float32), unit
+    return f, np.frombuffer(data, count=numPoint, dtype=np.float32), unit
 
 
 def download(gpibObj):
