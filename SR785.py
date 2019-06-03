@@ -6,6 +6,7 @@ from math import floor
 import time
 # Required custom libraries
 import netgpib
+import usbgpib
 import termstatus
 
 
@@ -24,6 +25,14 @@ def connectGPIB(ipAddress,gpibAddress):
     print("Instrument ID: ")
     idnString=gpibObj.query("*IDN?")
     print(idnString.splitlines()[-1])
+    time.sleep(0.1)
+    return(gpibObj)
+
+def connectUSBGPIB(device, gpibAddress, baud=9600, timeout=0.1, debug=False):
+    print('Connecting to '+str(device)+':'+str(gpibAddress)+'...')
+    gpibObj=usbgpib.usbGPIB(device, gpibAddress, baud=baud, auto=False, timeout=timeout, eot=b'\004',debug=debug)
+    print('Connected')
+    gpibObj.command("OUTX0") # lock screen
     time.sleep(0.1)
     return(gpibObj)
 
@@ -83,6 +92,58 @@ def getparam(gpibObj, fileRoot, dataFile, paramFile):
 # Fetching data
 ####################
 
+def download_data(gpib, display):
+    """
+    Faster method for grabbing data.
+    
+    Parameters
+    ----------
+    gpib : GPIB
+        GPIB connection object
+    display : int, char
+        Which display output to choose from 0(A) or 1(B)
+    
+    Returns
+    -------
+    f : ndarray[float]
+        Frequency vector, units Hz
+    y : ndarray[float]
+        Display data, units are
+    unit : str
+        Units of the output
+    """
+    if display.lower() == 'a' or display==0:
+        display = 0
+    elif display.lower() == 'b' or display==1:
+        display = 1
+    else:
+        raise Exception("Invalid display input")
+        
+    #Get the number of points on the Display
+    ret = gpib.query('DSPN?'+str(display)).strip()
+    if gpib.debug: print("download_display: ", ret)
+        
+    numPoint = int(ret.decode('UTF8'))
+    
+    freq=[]
+    data=[]
+    
+    if gpib.debug: print('Expecting %i bytes' % numPoint)
+    
+    data = gpib.query("DSPB?%i" % display, numPoint*4).strip()
+    
+    start = float(gpib.query('FSTR?0').strip().decode())
+    end   = float(gpib.query('FEND?0').strip().decode())
+    num   = int(gpib.query('FLIN?0').strip().decode())
+    Ns    = [100,200,400,800]
+    N     = Ns[num]
+    f     = np.linspace(start, end, N+1)
+    # square root character is outputted strange from SR785
+    unit = gpib.query("UNIT? %i" % 1).strip().replace(b'\xfb', u"\u221A".encode()).decode()
+    
+    assert(len(data)//4 == numPoint)
+    return f, np.frombuffer(data, count=N+1, dtype=np.float32), unit
+
 
 def download(gpibObj):
     data=list()
@@ -105,11 +166,13 @@ def download(gpibObj):
 
 def downloadDisplay(gpibObj, disp):
     #Get the number of points on the Display
-    numPoint = int(gpibObj.query('DSPN?'+str(disp),100))
+    ret = gpibObj.query('DSPN?'+str(disp)).strip()
+    print(ret)
+    numPoint = int(ret.decode('UTF8'))
     freq=[]
     data=[]
     accomplished=0
-    print('Reading data')
+    print('Reading %i points' % numPoint)
     progressInfo=termstatus.statusTxt('0%')
 
     for bin in range(numPoint): #Loop for frequency bins
@@ -572,6 +635,7 @@ def setParameters(gpibObj,params):
             icp1="1"
         else:
             icp1="0"
+            
         gpibObj.command('I1CP'+icp1) #CH1 Input Coupling
 
         if params['inputCoupling2'] == "AC":

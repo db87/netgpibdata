@@ -5,13 +5,11 @@ class statusTxt:
     def __init__(self,initTxt):
         self.txtlen = len(initTxt)
         self.txt = initTxt
-        # TODO: Check where this print command actually ends, previous ended with comma
-        print(initTxt,
-        sys.stdout.flush())
+        print(initTxt)
+        sys.stdout.flush()
 
     def update(self, updateTxt):
-        # TODO: make this print command python3 friendly
-        print "\010"+"\010"*self.txtlen+updateTxt,
+        print ("\010"+"\010"*self.txtlen+updateTxt)
         sys.stdout.flush()
         self.txtlen = len(updateTxt)
         self.txt = updateTxt
@@ -20,8 +18,7 @@ class statusTxt:
         if updateTxt == "":
             print("")
         else:
-            # TODO: make this print command python3 friendly
-            print "\010"+"\010"*self.txtlen+updateTxt
+            print ("\010"+"\010"*self.txtlen+updateTxt)
 
         sys.stdout.flush()
 
@@ -30,9 +27,8 @@ class progressBar:
         self.width=width
         self.nTot=nTot
         self.stepped=0
-        print('['+' '*width+']')
-        # TODO: Check if following line was supposed to include comma to next line
-        print('\b'*(width+2))
+        sys.stdout.write('['+' '*width+']')
+        sys.stdout.write('\r'*(width+2))
         sys.stdout.flush() 
         self.done=False
 
@@ -40,8 +36,8 @@ class progressBar:
         steps = int(round(val/self.nTot*self.width))
         if steps > self.stepped:
             for ii in range(steps-self.stepped):
-                print '\b'+'*',
-            sys.stdout.flush()
+                sys.stdout.write('\r'+'*')
+                sys.stdout.flush()
             self.stepped=steps
 
         if val == self.nTot:
@@ -49,7 +45,6 @@ class progressBar:
 
     def end(self):
         if self.done is False:
-            # TODO: make this print command python3 friendly
-            print '\b] Done!'
+            sys.stdout.write('\b] Done!')
             sys.stdout.flush()
             self.done=True
